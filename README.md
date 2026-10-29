@@ -6,7 +6,8 @@ No modela relaciones entre cuentas (la componente de red se aborda en análisis 
 
 ## Arquitectura y Stack Tecnológico
 * **Data Processing & Pipelines:** DuckDB, Parquet
-* **Machine Learning:** XGBoost, Scikit-Learn
+* **Machine Learning & Explicabilidad:** XGBoost, Scikit-Learn, SHAP
+* **Serving & API:** FastAPI, Pydantic v2, Uvicorn
 * **Análisis Exploratorio:** Pandas, Jupyter
 
 ## Enfoque de Ingeniería
@@ -15,10 +16,13 @@ No modela relaciones entre cuentas (la componente de red se aborda en análisis 
    El dataset crudo contiene +6.3 millones de transacciones. En lugar de saturar la memoria RAM cargando todo en Pandas, se implementó DuckDB como motor SQL en memoria para diagnosticar y aislar la fuga. Se demostró que el 100% del fraude ocurre en solo 2 canales (`TRANSFER` y `CASH_OUT`), permitiendo reducir el caudal de entrenamiento a 2.7M de registros en formato Parquet.
 
 2. **Feature Engineering (Física de Balances):**
-   En lugar de depender de los montos brutos, se construyeron sensores matemáticos que miden la discrepancia contable entre saldos iniciales, finales y el monto transferido, delatando los vaciados de cuentas típicos de redes de lavado.
+   En lugar de depender de los montos brutos, se construyeron sensores matemáticos que miden la discrepancia contable entre saldos iniciales, finales y el monto transferido, delatando los vaciados de cuentas típicos de cuentas mula.
 
 3. **Cost-Sensitive Learning (Cero SMOTE):**
    El dataset presenta un desbalance extremo (1:774). En lugar de inyectar ruido estadístico con datos sintéticos (SMOTE), se calculó la penalización matemática exacta de la clase minoritaria y se inyectó nativamente en el motor XGBoost (`scale_pos_weight = 336.34`).
+
+4. **Explicabilidad Regulatoria (SHAP TreeExplainer):**
+   En cumplimiento normativo para reportes de operaciones sospechosas (ROS / SAR), cada score de riesgo va acompañado de sus valores Shapley. Esto permite desglosar exactamente qué sensor (vaciado, error de balance origen o destino) gatilló la sospecha sobre la cuenta mula.
 
 ## Resultados del Prototipo
 Validación sobre un caudal de prueba de +550,000 transacciones (20% de la data unseen):
@@ -29,5 +33,8 @@ Validación sobre un caudal de prueba de +550,000 transacciones (20% de la data 
 ## Estructura del Proyecto
 * `data/raw/`: Caudal de datos crudos (ignorado en git).
 * `data/processed/`: Tablas filtradas en formato columnar Parquet (ignorado en git).
-* `notebooks/`: Prototipado y experimentación empírica.
-* `src/`: (Próximamente) Módulos de extracción, entrenamiento serializado y API en FastAPI.
+* `notebooks/`: Prototipado, validación empírica y análisis SHAP.
+* `src/data/`: Pipeline de extracción y filtrado con DuckDB.
+* `src/features/`: Sensores de balance y transformaciones contables.
+* `src/models/`: Script de entrenamiento, serialización (`.json`) y generación de explicadores SHAP.
+* `src/api/`: Microservicio FastAPI para inferencia y justificación en tiempo real.

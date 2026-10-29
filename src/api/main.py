@@ -71,7 +71,7 @@ def score_transaction(tx: TransactionPayload):
 
     model = ml_models.get("engine")
     if not model:
-        raise HTTPException(status_code=500, model="Modelo no inicializado en memoria")
+        raise HTTPException(status_code=500, detail="Modelo no inicializado en memoria")
 
     df_in = pd.DataFrame([tx.model_dump()])
     df_transformed = compute_financial_sensors(df_in)

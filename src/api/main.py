@@ -1,26 +1,34 @@
-﻿from fastapi import FastAPI, HTTPException
+﻿from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 import xgboost as xgb
 import pandas as pd
 import os
 from src.features.engineering import compute_financial_sensors
 
+# Diccionario global para el modelo en memoria
+ml_models = {}
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Carga del modelo al iniciar la API
+    MODEL_PATH = "models/xgb_aml_engine.json"
+    if not os.path.exists(MODEL_PATH):
+        raise RuntimeError(f"Artefacto {MODEL_PATH} no encontrado. Ejecuta python src/models/train.py primero.")
+    
+    model = xgb.XGBClassifier()
+    model.load_model(MODEL_PATH)
+    ml_models["engine"] = model
+    yield
+    # Limpieza al apagar (si fuera necesaria)
+    ml_models.clear()
+
 app = FastAPI(
     title="Mobile Wallet AML Engine",
     description="Inferencia en tiempo real para deteccion de layering y cuentas mula.",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
-
-MODEL_PATH = "models/xgb_aml_engine.json"
-model = None
-
-@app.on_event("startup")
-def load_engine():
-    global model
-    if not os.path.exists(MODEL_PATH):
-        raise RuntimeError(f"Artefacto {MODEL_PATH} no encontrado. Ejecuta src/models/train.py primero.")
-    model = xgb.XGBClassifier()
-    model.load_model(MODEL_PATH)
 
 class TransactionPayload(BaseModel):
     type: str = Field(..., description="TRANSFER o CASH_OUT")
@@ -51,7 +59,7 @@ class AMLDecision(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "model_ready": model is not None}
+    return {"status": "ok", "model_ready": "engine" in ml_models}
 
 @app.post("/predict", response_model=AMLDecision)
 def score_transaction(tx: TransactionPayload):
@@ -61,7 +69,11 @@ def score_transaction(tx: TransactionPayload):
             detail="Solo se evaluan canales vulnerables: TRANSFER o CASH_OUT"
         )
 
-    df_in = pd.DataFrame([tx.dict()])
+    model = ml_models.get("engine")
+    if not model:
+        raise HTTPException(status_code=500, model="Modelo no inicializado en memoria")
+
+    df_in = pd.DataFrame([tx.model_dump()])
     df_transformed = compute_financial_sensors(df_in)
 
     feature_cols = [

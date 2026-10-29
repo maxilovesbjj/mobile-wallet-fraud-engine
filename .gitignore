@@ -1,0 +1,10 @@
+﻿# Entornos virtuales
+.venv/
+__pycache__/
+
+# Datos pesados (nunca se suben al repo)
+data/raw/
+data/processed/
+
+# Jupyter
+.ipynb_checkpoints/

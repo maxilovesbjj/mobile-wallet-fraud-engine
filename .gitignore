@@ -8,3 +8,7 @@ data/processed/
 
 # Jupyter
 .ipynb_checkpoints/
+
+# Model artifacts
+models/*.json
+models/*.pkl

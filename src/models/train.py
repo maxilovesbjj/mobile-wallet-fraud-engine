@@ -1,50 +1,71 @@
 ﻿import os
+import json
 import duckdb
-import pandas as pd
 import xgboost as xgb
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report, confusion_matrix
+from src.features.engineering import compute_financial_sensors
 
-def train_and_export():
+def run_training_pipeline():
     parquet_path = "data/processed/paysim_filtered.parquet"
     if not os.path.exists(parquet_path):
-        raise FileNotFoundError(f"No se encontro {parquet_path}. Ejecuta primero el pipeline de datos.")
+        raise FileNotFoundError(f"Archivo no encontrado: {parquet_path}")
 
-    print("--- 1. Extrayendo datos procesados y calculando sensores ---")
+    print("1. Cargando datos desde Parquet...")
     con = duckdb.connect()
-    df_features = con.execute(f"""
-        SELECT 
-            step, type, amount, nameOrig, oldbalanceOrg, newbalanceOrig, 
-            nameDest, oldbalanceDest, newbalanceDest, isFraud,
-            ABS((oldbalanceOrg - newbalanceOrig) - amount) AS error_balance_origen,
-            ABS((newbalanceDest - oldbalanceDest) - amount) AS error_balance_destino,
-            CASE WHEN amount = oldbalanceOrg AND amount > 0 THEN 1 ELSE 0 END AS flag_vaciado
-        FROM '{parquet_path}'
-    """).df()
+    df_raw = con.execute(f"SELECT * FROM '{parquet_path}'").df()
 
-    print("--- 2. Preparando tensores ---")
-    df_features['type_encoded'] = df_features['type'].map({'TRANSFER': 0, 'CASH_OUT': 1})
-    X = df_features.drop(columns=['step', 'type', 'nameOrig', 'nameDest', 'isFraud'])
-    y = df_features['isFraud']
+    print("2. Calculando sensores a traves de src.features...")
+    df_transformed = compute_financial_sensors(df_raw)
 
+    feature_cols = [
+        'amount', 'oldbalanceOrg', 'newbalanceOrig', 
+        'oldbalanceDest', 'newbalanceDest', 
+        'error_balance_origen', 'error_balance_destino', 
+        'flag_vaciado', 'type_encoded'
+    ]
+    
+    X = df_transformed[feature_cols]
+    y = df_transformed['isFraud']
+
+    print("3. Split estratificado (80/20)...")
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
     )
 
-    peso_fraude = y_train.value_counts()[0] / y_train.value_counts()[1]
-    print(f"Multiplicador scale_pos_weight: {peso_fraude:.2f}")
+    peso_fraude = float(y_train.value_counts()[0] / y_train.value_counts()[1])
+    print(f"   scale_pos_weight: {peso_fraude:.2f}")
 
-    print("--- 3. Entrenando motor XGBoost ---")
-    motor_xgb = xgb.XGBClassifier(
+    print("4. Entrenando XGBoost...")
+    model = xgb.XGBClassifier(
         scale_pos_weight=peso_fraude,
         random_state=42,
-        n_jobs=-1
+        n_jobs=-1,
+        eval_metric="logloss"
     )
-    motor_xgb.fit(X_train, y_train)
+    model.fit(X_train, y_train)
+
+    print("5. Evaluando modelo sobre conjunto de prueba...")
+    y_pred = model.predict(X_test)
+    report = classification_report(y_test, y_pred, output_dict=True)
+    matrix = confusion_matrix(y_test, y_pred).tolist()
 
     os.makedirs("models", exist_ok=True)
-    model_output = "models/xgb_aml_engine.json"
-    motor_xgb.save_model(model_output)
-    print(f"--- 4. Motor exportado exitosamente en: {model_output} ---")
+    model.save_model("models/xgb_aml_engine.json")
+
+    metrics_payload = {
+        "scale_pos_weight": peso_fraude,
+        "confusion_matrix": {
+            "tn": matrix[0][0], "fp": matrix[0][1],
+            "fn": matrix[1][0], "tp": matrix[1][1]
+        },
+        "classification_report": report
+    }
+
+    with open("models/metrics.json", "w") as f:
+        json.dump(metrics_payload, f, indent=4)
+
+    print("Entrenamiento finalizado. Artefactos guardados en models/")
 
 if __name__ == "__main__":
-    train_and_export()
+    run_training_pipeline()

@@ -1,6 +1,8 @@
-﻿# Mobile Wallet Fraud Detection Engine
+﻿# Mobile Wallet AML Engine: Detección de Layering y Cuentas Mula
 
-Motor de detección de fraude de alto rendimiento para transacciones de billeteras móviles (basado en el dataset PaySim). Diseñado con un enfoque en ingeniería de datos para producción y *Cost-Sensitive Learning*.
+Detecta el patrón transaccional de *layering* en billeteras móviles — flujos `TRANSFER` → `CASH_OUT` con discrepancias contables anómalas — típico de cuentas mula usadas para integrar fondos de origen ilícito. 
+
+No modela relaciones entre cuentas (la componente de red se aborda en análisis de grafos posteriores); se enfoca estrictamente en la señal a nivel de transacción individual y comportamiento de cuenta. El uso de validadores lógicos y árboles de decisión (XGBoost) garantiza un bajo costo computacional, optimizado para *scoring* en tiempo real.
 
 ## Arquitectura y Stack Tecnológico
 * **Data Processing & Pipelines:** DuckDB, Parquet

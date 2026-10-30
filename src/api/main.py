@@ -1,17 +1,15 @@
 ﻿from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 import xgboost as xgb
 import pandas as pd
 import os
 from src.features.engineering import compute_financial_sensors
 
-# Diccionario global para el modelo en memoria
 ml_models = {}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Carga del modelo al iniciar la API
     MODEL_PATH = "models/xgb_aml_engine.json"
     if not os.path.exists(MODEL_PATH):
         raise RuntimeError(f"Artefacto {MODEL_PATH} no encontrado. Ejecuta python src/models/train.py primero.")
@@ -20,7 +18,6 @@ async def lifespan(app: FastAPI):
     model.load_model(MODEL_PATH)
     ml_models["engine"] = model
     yield
-    # Limpieza al apagar (si fuera necesaria)
     ml_models.clear()
 
 app = FastAPI(
@@ -38,8 +35,8 @@ class TransactionPayload(BaseModel):
     oldbalanceDest: float = Field(..., ge=0)
     newbalanceDest: float = Field(..., ge=0)
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "type": "CASH_OUT",
                 "amount": 250000.0,
@@ -49,6 +46,7 @@ class TransactionPayload(BaseModel):
                 "newbalanceDest": 260000.0
             }
         }
+    )
 
 class AMLDecision(BaseModel):
     is_sar_alert: bool

@@ -5,13 +5,14 @@ import xgboost as xgb
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, confusion_matrix
 from src.features.engineering import compute_financial_sensors
+from src.core.config import settings
 
 def run_training_pipeline():
-    parquet_path = "data/processed/paysim_filtered.parquet"
+    parquet_path = settings.DATA_PATH
     if not os.path.exists(parquet_path):
         raise FileNotFoundError(f"Archivo no encontrado: {parquet_path}")
 
-    print("1. Cargando datos desde Parquet...")
+    print(f"1. Cargando datos desde {parquet_path}...")
     con = duckdb.connect()
     df_raw = con.execute(f"SELECT * FROM '{parquet_path}'").df()
 
@@ -50,8 +51,10 @@ def run_training_pipeline():
     report = classification_report(y_test, y_pred, output_dict=True)
     matrix = confusion_matrix(y_test, y_pred).tolist()
 
-    os.makedirs("models", exist_ok=True)
-    model.save_model("models/xgb_aml_engine.json")
+    # Asegurar que el directorio del modelo exista
+    os.makedirs(os.path.dirname(settings.MODEL_PATH), exist_ok=True)
+    
+    model.save_model(settings.MODEL_PATH)
 
     metrics_payload = {
         "scale_pos_weight": peso_fraude,
@@ -62,10 +65,10 @@ def run_training_pipeline():
         "classification_report": report
     }
 
-    with open("models/metrics.json", "w") as f:
+    with open(settings.METRICS_PATH, "w") as f:
         json.dump(metrics_payload, f, indent=4)
 
-    print("Entrenamiento finalizado. Artefactos guardados en models/")
+    print(f"Entrenamiento finalizado. Artefactos guardados en {os.path.dirname(settings.MODEL_PATH)}/")
 
 if __name__ == "__main__":
     run_training_pipeline()

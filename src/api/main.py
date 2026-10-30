@@ -5,17 +5,17 @@ import xgboost as xgb
 import pandas as pd
 import os
 from src.features.engineering import compute_financial_sensors
+from src.core.config import settings
 
 ml_models = {}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    MODEL_PATH = "models/xgb_aml_engine.json"
-    if not os.path.exists(MODEL_PATH):
-        raise RuntimeError(f"Artefacto {MODEL_PATH} no encontrado. Ejecuta python src/models/train.py primero.")
+    if not os.path.exists(settings.MODEL_PATH):
+        raise RuntimeError(f"Artefacto {settings.MODEL_PATH} no encontrado. Ejecuta el pipeline de entrenamiento.")
     
     model = xgb.XGBClassifier()
-    model.load_model(MODEL_PATH)
+    model.load_model(settings.MODEL_PATH)
     ml_models["engine"] = model
     yield
     ml_models.clear()
@@ -82,7 +82,7 @@ def score_transaction(tx: TransactionPayload):
     ]
     
     prob = float(model.predict_proba(df_transformed[feature_cols])[0][1])
-    is_alert = bool(prob >= 0.5)
+    is_alert = bool(prob >= settings.SAR_ALERT_THRESHOLD)
 
     return AMLDecision(
         is_sar_alert=is_alert,

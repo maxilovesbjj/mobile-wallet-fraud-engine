@@ -4,19 +4,29 @@ from pydantic import BaseModel, Field, ConfigDict
 import xgboost as xgb
 import pandas as pd
 import os
+import logging
 from src.features.engineering import compute_financial_sensors
 from src.core.config import settings
+
+# Configuracion de logging de auditoria AML
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger("aml_engine")
 
 ml_models = {}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if not os.path.exists(settings.MODEL_PATH):
+        logger.error(f"Artefacto {settings.MODEL_PATH} no encontrado.")
         raise RuntimeError(f"Artefacto {settings.MODEL_PATH} no encontrado. Ejecuta el pipeline de entrenamiento.")
     
     model = xgb.XGBClassifier()
     model.load_model(settings.MODEL_PATH)
     ml_models["engine"] = model
+    logger.info("Modelo AML cargado exitosamente en memoria.")
     yield
     ml_models.clear()
 
@@ -83,6 +93,14 @@ def score_transaction(tx: TransactionPayload):
     
     prob = float(model.predict_proba(df_transformed[feature_cols])[0][1])
     is_alert = bool(prob >= settings.SAR_ALERT_THRESHOLD)
+
+    # Rastro de auditoria para operaciones sospechosas
+    if is_alert:
+        logger.warning(
+            f"ALERTA SAR DETECTADA | Probabilidad: {prob:.4f} | "
+            f"Monto: {tx.amount} | Tipo: {tx.type} | "
+            f"Vaciado: {df_transformed['flag_vaciado'].iloc[0]}"
+        )
 
     return AMLDecision(
         is_sar_alert=is_alert,

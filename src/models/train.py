@@ -1,5 +1,7 @@
 ﻿import os
 import json
+import shutil
+from datetime import datetime
 import duckdb
 import xgboost as xgb
 from sklearn.model_selection import train_test_split
@@ -51,12 +53,17 @@ def run_training_pipeline():
     report = classification_report(y_test, y_pred, output_dict=True)
     matrix = confusion_matrix(y_test, y_pred).tolist()
 
-    # Asegurar que el directorio del modelo exista
     os.makedirs(os.path.dirname(settings.MODEL_PATH), exist_ok=True)
     
-    model.save_model(settings.MODEL_PATH)
+    # 6. Versionado del artefacto (guarda version historica y actualiza 'latest')
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    versioned_model_path = settings.MODEL_PATH.replace(".json", f"_{timestamp}.json")
+    
+    model.save_model(versioned_model_path)
+    shutil.copy(versioned_model_path, settings.MODEL_PATH)
 
     metrics_payload = {
+        "timestamp": timestamp,
         "scale_pos_weight": peso_fraude,
         "confusion_matrix": {
             "tn": matrix[0][0], "fp": matrix[0][1],
@@ -65,10 +72,12 @@ def run_training_pipeline():
         "classification_report": report
     }
 
-    with open(settings.METRICS_PATH, "w") as f:
+    versioned_metrics_path = settings.METRICS_PATH.replace(".json", f"_{timestamp}.json")
+    with open(versioned_metrics_path, "w") as f:
         json.dump(metrics_payload, f, indent=4)
+    shutil.copy(versioned_metrics_path, settings.METRICS_PATH)
 
-    print(f"Entrenamiento finalizado. Artefactos guardados en {os.path.dirname(settings.MODEL_PATH)}/")
+    print(f"Entrenamiento finalizado. Modelo versionado en: {versioned_model_path}")
 
 if __name__ == "__main__":
     run_training_pipeline()

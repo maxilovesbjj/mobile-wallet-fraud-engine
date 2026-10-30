@@ -7,7 +7,7 @@ on:
     branches: [ master, main ]
 
 jobs:
-  audit-and-test:
+  test:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
@@ -15,17 +15,14 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.11'
+        python-version: "3.11"
         
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         
-    - name: Entrenar artefacto para entorno de test
-      run: python -m src.models.train
-        
-    - name: Ejecutar Suite de Tests AML
+    - name: Ejecutar Suite de Tests Independientes
       env:
         PYTHONPATH: .
       run: pytest tests/
